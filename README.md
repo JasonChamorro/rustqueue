@@ -157,11 +157,11 @@ impl MiscDevice for RustQueueDevice {
 ```
 
 # Write
-```write_iter()``` enqueues a message.
-We first obtain a lock on the global queue. Then we check to see if there is space in the queue by comparing ```q.len()``` to ```MAX_MESSAGES```.
-Next, we need to copy the item from user space into kernal space. First we create an empty kernal vector buffer with ```let mut msg: KVec<u8> = KVec::new();```. We then fill msg with bytes from the user space with ```let len = iov.copy_from_iter_vec(&mut msg, GFP_KERNEL)?;```.
-We then compare ```len``` to ```MAX_MSG_SIZE```.
-Finally, we can transfer ownership of the message into the queue with ```q.push```.
+```write_iter()``` enqueues a message.  
+- We first obtain a lock on the global queue. Then we check to see if there is space in the queue by comparing ```q.len()``` to ```MAX_MESSAGES```.  
+- Next, we need to copy the item from user space into kernal space. We create an empty kernal vector buffer with ```let mut msg: KVec<u8> = KVec::new();```. We then fill msg with bytes from the user space with ```let len = iov.copy_from_iter_vec(&mut msg, GFP_KERNEL)?;```.  
+- We then compare ```len``` to ```MAX_MSG_SIZE```.  
+- Finally, we can transfer ownership of the message into the queue with ```q.push```.  
 ```rust
 fn write_iter(mut kiocb: Kiocb<'_, Self::Ptr>, iov: &mut IovIterSource<'_>) -> Result<usize> {
     let mut q = QUEUE.lock();
@@ -185,4 +185,29 @@ fn write_iter(mut kiocb: Kiocb<'_, Self::Ptr>, iov: &mut IovIterSource<'_>) -> R
     Ok(len)
 }
 
+```
+# Read
+Lazy dequeue, then stream the message
+- For the first read, we dequeue the entire message and store it in pending. We do this because the message may be longer than the user's read buffer, and we don't want to lose it.
+- Subsiquent reads stream off that first read, as they share a location in memeory. We use the `kiocb.ki_pos_mut()` to track the offset.
+
+```Rust
+fn read_iter(mut kiocb: Kiocb<'_, Self::Ptr>, iov: &mut IovIterDest<'_>) -> Result<usize> {
+    let me = kiocb.file();
+    let mut pending = me.pending.lock();
+
+    // First read of this open: pull one message off the queue and remember it.
+    if pending.is_none() && *kiocb.ki_pos_mut() == 0 {
+        let mut q = QUEUE.lock();
+        if !q.is_empty() {
+            *pending = Some(q.remove(0)?);
+            pr_info!("dequeued ({} remaining)\n", q.len());
+        }
+    }
+
+    match pending.as_ref() {
+        None => Ok(0),
+        Some(msg) => iov.simple_read_from_buffer(kiocb.ki_pos_mut(), msg),
+    }
+}
 ```
