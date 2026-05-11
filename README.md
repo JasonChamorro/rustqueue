@@ -83,8 +83,8 @@ sudo rmmod rustqueue
 ```
 There should be 16 successful enqueues, followed by four rejected writes.
 # Code Breakdown
-## Makefile
-
+## Modulo Shell
+This module wraps the queue as a device in ```MiscDeviceRegistration``` and initializes the global lock at load.
 ```rust
 use kernel::{
     fs::{File, Kiocb},
@@ -134,6 +134,10 @@ struct RustQueueDevice {
     pending: Mutex<Option<KVec<u8>>>,
 }
 
+```
+# Open
+each ```open()``` creates a fresh ```RustQueueDevice``` with an empty ```pending``` slot. When we ```read()```, a message will be pulled off the global queue.
+```rust
 #[vtable]
 impl MiscDevice for RustQueueDevice {
     type Ptr = Pin<KBox<Self>>;
@@ -148,4 +152,37 @@ impl MiscDevice for RustQueueDevice {
             GFP_KERNEL,
         )
     }
+    // write_iter() and read_iter() below
+}
+```
+
+# Write
+```write_iter()``` enqueues a message.
+We first obtain a lock on the global queue. Then we check to see if there is space in the queue by comparing ```q.len()``` to ```MAX_MESSAGES```.
+Next, we need to copy the item from user space into kernal space. First we create an empty kernal vector buffer with ```let mut msg: KVec<u8> = KVec::new();```. We then fill msg with bytes from the user space with ```let len = iov.copy_from_iter_vec(&mut msg, GFP_KERNEL)?;```.
+We then compare ```len``` to ```MAX_MSG_SIZE```.
+Finally, we can transfer ownership of the message into the queue with ```q.push```.
+```rust
+fn write_iter(mut kiocb: Kiocb<'_, Self::Ptr>, iov: &mut IovIterSource<'_>) -> Result<usize> {
+    let mut q = QUEUE.lock();
+
+    if q.len() >= MAX_MESSAGES {
+        pr_info!("queue full, rejecting write\n");
+        return Err(ENOSPC);
+    }
+
+    let mut msg: KVec<u8> = KVec::new();
+    let len = iov.copy_from_iter_vec(&mut msg, GFP_KERNEL)?;
+
+    if len > MAX_MSG_SIZE {
+        return Err(EINVAL);
+    }
+
+    q.push(msg, GFP_KERNEL)?;
+    *kiocb.ki_pos_mut() = 0;
+
+    pr_info!("enqueued {} bytes ({} in queue)\n", len, q.len());
+    Ok(len)
+}
+
 ```
