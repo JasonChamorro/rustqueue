@@ -34,4 +34,40 @@ ls /lib/modules/$(uname -r)/build/rust  # Rust support files for this kernel exi
 
 
 ## Project Directory
-Clone the repository into the vm. Running ```bash ls ``` should return Makefile, README, and rustqueue.rs.
+Clone the repository into the vm. Running ```bash ls``` should show Makefile, README, and rustqueue.rs.
+
+# Running and Code Breakdown
+To build the makefile, run:
+```bash
+make clean && make
+```
+
+```bash /dev/rustqueue``` is created with mode ```bash 0600 root:root```. This gives read and write access, but we need ```bash sudo``` for either. To observe how the queue works, lets run a basic example to see the queue in action.
+
+```bash
+sudo insmod rustqueue.ko
+ls -la /dev/rustqueue
+
+echo "first message"  | sudo tee /dev/rustqueue > /dev/null
+echo "second message" | sudo tee /dev/rustqueue > /dev/null
+echo "third message"  | sudo tee /dev/rustqueue > /dev/null
+
+sudo cat /dev/rustqueue   # → "first message"
+sudo cat /dev/rustqueue   # → "second message"
+sudo cat /dev/rustqueue   # → "third message"
+sudo cat /dev/rustqueue   # → (empty, EOF — no output)
+
+sudo dmesg | tail -10
+sudo rmmod rustqueue
+```
+
+You should see that our queue has a maximum of 16 items, and three messages getting queued and dequeued.
+```bash
+rustqueue: module loaded (capacity 16 messages)
+rustqueue: enqueued 14 bytes (1 in queue)
+rustqueue: enqueued 15 bytes (2 in queue)
+rustqueue: enqueued 14 bytes (3 in queue)
+rustqueue: dequeued (2 remaining)
+rustqueue: dequeued (1 remaining)
+rustqueue: dequeued (0 remaining)
+```
