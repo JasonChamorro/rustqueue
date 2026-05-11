@@ -82,3 +82,70 @@ sudo dmesg | tail -20
 sudo rmmod rustqueue
 ```
 There should be 16 successful enqueues, followed by four rejected writes.
+# Code Breakdown
+## Makefile
+
+```rust
+use kernel::{
+    fs::{File, Kiocb},
+    iov::{IovIterDest, IovIterSource},
+    miscdevice::{MiscDevice, MiscDeviceOptions, MiscDeviceRegistration},
+    new_mutex,
+    prelude::*,
+    sync::Mutex,
+};
+
+module! {
+    type: RustQueue,
+    name: "rustqueue",
+    description: "rustqueue — a bounded FIFO message queue",
+    license: "GPL",
+}
+
+const MAX_MESSAGES: usize = 16;
+const MAX_MSG_SIZE: usize = 4096;
+
+kernel::sync::global_lock! {
+    unsafe(uninit) static QUEUE: Mutex<KVec<KVec<u8>>> = KVec::new();
+}
+
+#[pin_data]
+struct RustQueue {
+    #[pin]
+    _miscdev: MiscDeviceRegistration<RustQueueDevice>,
+}
+
+impl kernel::InPlaceModule for RustQueue {
+    fn init(_module: &'static ThisModule) -> impl PinInit<Self, Error> {
+        pr_info!("module loaded (capacity {} messages)\n", MAX_MESSAGES);
+        // SAFETY: Called exactly once during module init.
+        unsafe { QUEUE.init() };
+        let opts = MiscDeviceOptions { name: c"rustqueue" };
+        try_pin_init!(Self {
+            _miscdev <- MiscDeviceRegistration::register(opts),
+        })
+    }
+}
+
+#[pin_data]
+struct RustQueueDevice {
+    // Per-open: the message we dequeued for this `cat` invocation, if any.
+    #[pin]
+    pending: Mutex<Option<KVec<u8>>>,
+}
+
+#[vtable]
+impl MiscDevice for RustQueueDevice {
+    type Ptr = Pin<KBox<Self>>;
+
+    fn open(_file: &File, _misc: &MiscDeviceRegistration<Self>) -> Result<Pin<KBox<Self>>> {
+        KBox::try_pin_init(
+            try_pin_init! {
+                RustQueueDevice {
+                    pending <- new_mutex!(None),
+                }
+            },
+            GFP_KERNEL,
+        )
+    }
+```
