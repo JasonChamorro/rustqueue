@@ -34,15 +34,17 @@ ls /lib/modules/$(uname -r)/build/rust  # Rust support files for this kernel exi
 
 
 ## Project Directory
-Clone the repository into the vm. Running ```bash ls``` should show Makefile, README, and rustqueue.rs.
+Clone the repository into the vm. Running ```ls``` should show Makefile, README, and rustqueue.rs.
 
-# Running and Code Breakdown
+# Running
 To build the makefile, run:
 ```bash
 make clean && make
 ```
+```/dev/rustqueue``` is created with mode ```0600 root:root```. This gives read and write access, but we need ```bash sudo``` for either. Running ```ls``` again will show you everything the makefile built.
 
-```bash /dev/rustqueue``` is created with mode ```bash 0600 root:root```. This gives read and write access, but we need ```bash sudo``` for either. To observe how the queue works, lets run a basic example to see the queue in action.
+## Example 1: Queue and dequeue three messages.
+To observe how the queue works, lets run a basic example to see the queue in action.
 
 ```bash
 sudo insmod rustqueue.ko
@@ -71,3 +73,12 @@ rustqueue: dequeued (2 remaining)
 rustqueue: dequeued (1 remaining)
 rustqueue: dequeued (0 remaining)
 ```
+## Example 2: Overloading the queue.
+Try running the following and observers what happens:
+```bash
+sudo insmod rustqueue.ko
+for i in {1..20}; do echo "message $i" | sudo tee /dev/rustqueue > /dev/null || echo "write $i FAILED"; done
+sudo dmesg | tail -20
+sudo rmmod rustqueue
+```
+There should be 16 successful enqueues, followed by four rejected writes.
