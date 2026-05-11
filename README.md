@@ -34,6 +34,4 @@ ls /lib/modules/$(uname -r)/build/rust  # Rust support files for this kernel exi
 
 
 ## Project Directory
-```bash
-mkdir -p ~/rustqueue && cd ~/rustqueue
-```
+Clone the repository into the vm. Running ```bash ls ``` should return Makefile, README, and rustqueue.rs.
