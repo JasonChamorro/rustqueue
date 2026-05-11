@@ -6,7 +6,7 @@
 ## Getting Started - VM Setup
 Set up a new VM, or shell into an exsisting one. 
 
-'''
+'''bash
 multipass launch --name NAME lts
 multipass shell NAME
 '''
