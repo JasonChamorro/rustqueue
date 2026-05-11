@@ -63,7 +63,7 @@ impl MiscDevice for RustQueueDevice {
             GFP_KERNEL,
         )
     }
-    // write_iter() and read_iter() below}
+
 
 fn write_iter(mut kiocb: Kiocb<'_, Self::Ptr>, iov: &mut IovIterSource<'_>) -> Result<usize> {
     let mut q = QUEUE.lock();
