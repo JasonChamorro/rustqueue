@@ -81,7 +81,7 @@ for i in {1..20}; do echo "message $i" | sudo tee /dev/rustqueue > /dev/null || 
 sudo dmesg | tail -20
 sudo rmmod rustqueue
 ```
-There should be 16 successful enqueues, followed by four rejected writes.
+There should be 16 successful enqueues, followed by 4 rejected writes.
 # Code Breakdown
 ## Modulo Shell
 This module wraps the queue as a device in ```MiscDeviceRegistration``` and initializes the global lock at load.
@@ -136,7 +136,7 @@ struct RustQueueDevice {
 
 ```
 # Open
-each ```open()``` creates a fresh ```RustQueueDevice``` with an empty ```pending``` slot. When we ```read()```, a message will be pulled off the global queue.
+Each ```open()``` creates a fresh ```RustQueueDevice``` with an empty ```pending``` slot. When we ```read()```, a message will be pulled off the global queue.
 ```rust
 #[vtable]
 impl MiscDevice for RustQueueDevice {
